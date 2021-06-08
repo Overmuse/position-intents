@@ -37,14 +37,6 @@ impl AmountSpec {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[non_exhaustive]
-#[serde(rename_all = "lowercase")]
-pub enum Condition {
-    Before(DateTime<Utc>),
-    After(DateTime<Utc>),
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PositionIntent {
     pub id: String,
     pub strategy: String,
@@ -55,8 +47,10 @@ pub struct PositionIntent {
     pub decision_price: Option<Decimal>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit_price: Option<Decimal>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub conditions: Vec<Condition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<DateTime<Utc>>,
 }
 
 impl PositionIntent {
@@ -69,7 +63,8 @@ impl PositionIntent {
             amount,
             decision_price: None,
             limit_price: None,
-            conditions: vec![],
+            before: None,
+            after: None,
         }
     }
 
@@ -88,8 +83,13 @@ impl PositionIntent {
         self
     }
 
-    pub fn conditions(mut self, conditions: Vec<Condition>) -> Self {
-        self.conditions = conditions;
+    pub fn before(mut self, before: DateTime<Utc>) -> Self {
+        self.before = Some(before);
+        self
+    }
+
+    pub fn after(mut self, after: DateTime<Utc>) -> Self {
+        self.after = Some(after);
         self
     }
 }
