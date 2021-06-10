@@ -18,6 +18,9 @@ pub enum Error {
 pub enum AmountSpec {
     Dollars(Decimal),
     Shares(Decimal),
+    Retain,
+    RetainLong,
+    RetainShort,
     Percent(Decimal),
     Zero,
 }
