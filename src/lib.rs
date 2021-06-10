@@ -23,7 +23,7 @@ pub enum AmountSpec {
 }
 
 impl AmountSpec {
-    pub fn merge(self, other: AmountSpec) -> Result<Self, Error> {
+    pub fn merge(self, other: Self) -> Result<Self, Error> {
         match (self, other) {
             (AmountSpec::Dollars(x), AmountSpec::Dollars(y)) => Ok(AmountSpec::Dollars(x + y)),
             (AmountSpec::Shares(x), AmountSpec::Shares(y)) => Ok(AmountSpec::Shares(x + y)),
@@ -36,40 +36,22 @@ impl AmountSpec {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PositionIntent {
-    pub id: String,
-    pub strategy: String,
-    pub timestamp: DateTime<Utc>,
-    pub ticker: String,
-    pub amount: AmountSpec,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub decision_price: Option<Decimal>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub limit_price: Option<Decimal>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub before: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub after: Option<DateTime<Utc>>,
+#[derive(Debug, Clone)]
+pub struct PositionIntentBuilder {
+    strategy: String,
+    sub_strategy: Option<String>,
+    ticker: String,
+    amount: AmountSpec,
+    decision_price: Option<Decimal>,
+    limit_price: Option<Decimal>,
+    stop_price: Option<Decimal>,
+    before: Option<DateTime<Utc>>,
+    after: Option<DateTime<Utc>>,
 }
 
-impl PositionIntent {
-    pub fn new(strategy: impl Into<String>, ticker: impl Into<String>, amount: AmountSpec) -> Self {
-        Self {
-            id: Uuid::new_v4().to_string(),
-            strategy: strategy.into(),
-            timestamp: Utc::now(),
-            ticker: ticker.into(),
-            amount,
-            decision_price: None,
-            limit_price: None,
-            before: None,
-            after: None,
-        }
-    }
-
-    pub fn id<T: Into<String>>(mut self, id: T) -> Self {
-        self.id = id.into();
+impl PositionIntentBuilder {
+    pub fn sub_strategy(mut self, sub_strategy: impl Into<String>) -> Self {
+        self.sub_strategy = Some(sub_strategy.into());
         self
     }
 
@@ -83,6 +65,11 @@ impl PositionIntent {
         self
     }
 
+    pub fn stop_price(mut self, stop_price: Decimal) -> Self {
+        self.stop_price = Some(stop_price);
+        self
+    }
+
     pub fn before(mut self, before: DateTime<Utc>) -> Self {
         self.before = Some(before);
         self
@@ -91,5 +78,88 @@ impl PositionIntent {
     pub fn after(mut self, after: DateTime<Utc>) -> Self {
         self.after = Some(after);
         self
+    }
+
+    pub fn build(self) -> PositionIntent {
+        PositionIntent {
+            id: Uuid::new_v4(),
+            strategy: self.strategy,
+            sub_strategy: self.sub_strategy,
+            timestamp: Utc::now(),
+            ticker: self.ticker,
+            amount: self.amount,
+            decision_price: self.decision_price,
+            limit_price: self.limit_price,
+            stop_price: self.stop_price,
+            before: self.before,
+            after: self.after,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PositionIntent {
+    pub id: Uuid,
+    /// The strategy that is requesting a position. Dollar limits are shared between all positions
+    /// of the same strategy.
+    pub strategy: String,
+    /// Identifier for a specific leg of a position for a strategy. Sub-strategies must still
+    /// adhere to the dollar limits of the strategy, but the order-manager will keep track of the
+    /// holdings at the sub-strategy level.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_strategy: Option<String>,
+    pub timestamp: DateTime<Utc>,
+    pub ticker: String,
+    pub amount: AmountSpec,
+    /// The price at which the decision was made to send a position request. This can be used by
+    /// other parts of the app for execution analysis. This field might also be used for
+    /// translating between dollars and shares by the order-manager.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decision_price: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit_price: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop_price: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<DateTime<Utc>>,
+}
+
+impl PositionIntent {
+    pub fn builder(
+        strategy: impl Into<String>,
+        ticker: impl Into<String>,
+        amount: AmountSpec,
+    ) -> PositionIntentBuilder {
+        PositionIntentBuilder {
+            strategy: strategy.into(),
+            sub_strategy: None,
+            ticker: ticker.into(),
+            amount,
+            decision_price: None,
+            limit_price: None,
+            stop_price: None,
+            before: None,
+            after: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn can_construct_position_intent() {
+        let builder = PositionIntent::builder("A", "AAPL", AmountSpec::Dollars(Decimal::new(1, 0)));
+        let _intent = builder
+            .sub_strategy("B")
+            .decision_price(Decimal::new(2, 0))
+            .limit_price(Decimal::new(3, 0))
+            .stop_price(Decimal::new(3, 0))
+            .before(Utc::now())
+            .after(Utc::now())
+            .build();
     }
 }
