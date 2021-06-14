@@ -10,9 +10,13 @@ pub enum Error {
         "Non-`Zero` `AmountSpec`s of different type cannot be merged.\nLeft: {0:?}, Right: {1:?}"
     )]
     IncompatibleAmountError(AmountSpec, AmountSpec),
+    #[error("Cannot create PositionIntent with `before` < `after`. \nBefore: {0}, After: {1}")]
+    InvalidBeforeAfter(DateTime<Utc>, DateTime<Utc>),
+    #[error("TickerSpec `All` can only be used with the `Dollars` and `Shares` `AmountSpec`s")]
+    InvalidCombination,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[non_exhaustive]
 #[serde(rename_all = "lowercase")]
 pub enum AmountSpec {
@@ -39,11 +43,24 @@ impl AmountSpec {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TickerSpec {
+    Ticker(String),
+    All,
+}
+
+impl<T: ToString> From<T> for TickerSpec {
+    fn from(s: T) -> Self {
+        Self::Ticker(s.to_string())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PositionIntentBuilder {
     strategy: String,
     sub_strategy: Option<String>,
-    ticker: String,
+    ticker: TickerSpec,
     amount: AmountSpec,
     decision_price: Option<Decimal>,
     limit_price: Option<Decimal>,
@@ -83,8 +100,18 @@ impl PositionIntentBuilder {
         self
     }
 
-    pub fn build(self) -> PositionIntent {
-        PositionIntent {
+    pub fn build(self) -> Result<PositionIntent, Error> {
+        if let Some((before, after)) = self.before.zip(self.after) {
+            if before < after {
+                return Err(Error::InvalidBeforeAfter(before, after));
+            }
+        }
+        match (self.ticker.clone(), self.amount.clone()) {
+            (TickerSpec::All, AmountSpec::Dollars(_)) => return Err(Error::InvalidCombination),
+            (TickerSpec::All, AmountSpec::Shares(_)) => return Err(Error::InvalidCombination),
+            _ => (),
+        }
+        Ok(PositionIntent {
             id: Uuid::new_v4(),
             strategy: self.strategy,
             sub_strategy: self.sub_strategy,
@@ -96,11 +123,11 @@ impl PositionIntentBuilder {
             stop_price: self.stop_price,
             before: self.before,
             after: self.after,
-        }
+        })
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct PositionIntent {
     pub id: Uuid,
     /// The strategy that is requesting a position. Dollar limits are shared between all positions
@@ -112,7 +139,7 @@ pub struct PositionIntent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sub_strategy: Option<String>,
     pub timestamp: DateTime<Utc>,
-    pub ticker: String,
+    pub ticker: TickerSpec,
     pub amount: AmountSpec,
     /// The price at which the decision was made to send a position request. This can be used by
     /// other parts of the app for execution analysis. This field might also be used for
@@ -132,7 +159,7 @@ pub struct PositionIntent {
 impl PositionIntent {
     pub fn builder(
         strategy: impl Into<String>,
-        ticker: impl Into<String>,
+        ticker: impl Into<TickerSpec>,
         amount: AmountSpec,
     ) -> PositionIntentBuilder {
         PositionIntentBuilder {
@@ -163,6 +190,25 @@ mod test {
             .stop_price(Decimal::new(3, 0))
             .before(Utc::now())
             .after(Utc::now())
-            .build();
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    fn can_serialize_and_deserialize() {
+        let builder =
+            PositionIntent::builder("A", TickerSpec::All, AmountSpec::Shares(Decimal::new(1, 0)));
+        let intent = builder
+            .sub_strategy("B")
+            .decision_price(Decimal::new(2, 0))
+            .limit_price(Decimal::new(3, 0))
+            .stop_price(Decimal::new(3, 0))
+            .before(Utc::now())
+            .after(Utc::now())
+            .build()
+            .unwrap();
+        let serialized = serde_json::to_string(&intent).unwrap();
+        let deserialized = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(intent, deserialized);
     }
 }
