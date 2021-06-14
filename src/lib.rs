@@ -179,6 +179,7 @@ impl PositionIntent {
 #[cfg(test)]
 mod test {
     use super::*;
+    use chrono::Duration;
 
     #[test]
     fn can_construct_position_intent() {
@@ -188,7 +189,7 @@ mod test {
             .decision_price(Decimal::new(2, 0))
             .limit_price(Decimal::new(3, 0))
             .stop_price(Decimal::new(3, 0))
-            .before(Utc::now())
+            .before(Utc::now() + Duration::hours(1))
             .after(Utc::now())
             .build()
             .unwrap();
@@ -196,14 +197,13 @@ mod test {
 
     #[test]
     fn can_serialize_and_deserialize() {
-        let builder =
-            PositionIntent::builder("A", TickerSpec::All, AmountSpec::Shares(Decimal::new(1, 0)));
+        let builder = PositionIntent::builder("A", "AAPL", AmountSpec::Shares(Decimal::new(1, 0)));
         let intent = builder
             .sub_strategy("B")
             .decision_price(Decimal::new(2, 0))
             .limit_price(Decimal::new(3, 0))
             .stop_price(Decimal::new(3, 0))
-            .before(Utc::now())
+            .before(Utc::now() + Duration::hours(1))
             .after(Utc::now())
             .build()
             .unwrap();
