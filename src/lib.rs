@@ -17,16 +17,21 @@ pub enum Error {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[non_exhaustive]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum AmountSpec {
     Dollars(Decimal),
     Shares(Decimal),
+    Percent(Decimal),
+    Zero,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdatePolicy {
     Retain,
     RetainLong,
     RetainShort,
-    Percent(Decimal),
-    Zero,
+    Update,
 }
 
 impl AmountSpec {
@@ -62,6 +67,7 @@ pub struct PositionIntentBuilder {
     sub_strategy: Option<String>,
     ticker: TickerSpec,
     amount: AmountSpec,
+    update_policy: UpdatePolicy,
     decision_price: Option<Decimal>,
     limit_price: Option<Decimal>,
     stop_price: Option<Decimal>,
@@ -100,6 +106,11 @@ impl PositionIntentBuilder {
         self
     }
 
+    pub fn update_policy(mut self, policy: UpdatePolicy) -> Self {
+        self.update_policy = policy;
+        self
+    }
+
     pub fn build(self) -> Result<PositionIntent, Error> {
         if let Some((before, after)) = self.before.zip(self.after) {
             if before < after {
@@ -118,6 +129,7 @@ impl PositionIntentBuilder {
             timestamp: Utc::now(),
             ticker: self.ticker,
             amount: self.amount,
+            update_policy: self.update_policy,
             decision_price: self.decision_price,
             limit_price: self.limit_price,
             stop_price: self.stop_price,
@@ -141,6 +153,7 @@ pub struct PositionIntent {
     pub timestamp: DateTime<Utc>,
     pub ticker: TickerSpec,
     pub amount: AmountSpec,
+    pub update_policy: UpdatePolicy,
     /// The price at which the decision was made to send a position request. This can be used by
     /// other parts of the app for execution analysis. This field might also be used for
     /// translating between dollars and shares by the order-manager.
@@ -167,6 +180,7 @@ impl PositionIntent {
             sub_strategy: None,
             ticker: ticker.into(),
             amount,
+            update_policy: UpdatePolicy::Update,
             decision_price: None,
             limit_price: None,
             stop_price: None,
@@ -189,6 +203,7 @@ mod test {
             .decision_price(Decimal::new(2, 0))
             .limit_price(Decimal::new(3, 0))
             .stop_price(Decimal::new(3, 0))
+            .update_policy(UpdatePolicy::Retain)
             .before(Utc::now() + Duration::hours(1))
             .after(Utc::now())
             .build()
@@ -203,6 +218,7 @@ mod test {
             .decision_price(Decimal::new(2, 0))
             .limit_price(Decimal::new(3, 0))
             .stop_price(Decimal::new(3, 0))
+            .update_policy(UpdatePolicy::Retain)
             .before(Utc::now() + Duration::hours(1))
             .after(Utc::now())
             .build()
